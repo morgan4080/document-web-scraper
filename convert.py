@@ -1,4 +1,6 @@
 import os
+
+from docx.opc.exceptions import PackageNotFoundError
 from slugify import slugify
 from docx import Document
 import http.client
@@ -63,7 +65,6 @@ def convert_docx_to_html(docx_file):
                 in_list = True
 
             # Add list item
-            print(paragraph.text)
             html_content += f"<li>{paragraph.text}</li>"
         else:
             # End the list if we were previously in one
@@ -83,24 +84,53 @@ def convert_docx_to_html(docx_file):
 
 
 def convert_folder_to_html(input_folder):
+    total_files_added = 0
+    total_files_found = 0
     for file_name in os.listdir(input_folder):
+        total_files_found += 1  # Increment total files found
         if file_name.endswith(".docx"):
-            file_path = os.path.join(input_folder, file_name)
-            html_content = convert_docx_to_html(file_path)
-            excerpt = extract_excerpt(file_path)
-            if len(file_name.split(".")) > 0:
-                send_html_to_api(file_name.split(".")[0], excerpt, html_content)
+            try:
+                file_path = os.path.join(input_folder, file_name)
+                html_content = convert_docx_to_html(file_path)
+                excerpt = extract_excerpt(file_path)
+                if len(file_name.split(".")) > 0:
+                    send_html_to_api(file_name.split(".")[0], excerpt, html_content)
+                    total_files_added += 1
+            except PackageNotFoundError as e:
+                print("Error:", e)
+            finally:
+                print("Transfer Complete: ", file_name)
         elif file_name.endswith(".pdf"):
-            file_path = os.path.join(input_folder, file_name)
-            html_content = convert_pdf_to_html(file_path)
-            excerpt = extract_excerpt_from_pdf(file_path)
-            if len(file_name.split(".")) > 0:
-                send_html_to_api(file_name.split(".")[0], excerpt, html_content)
+            try:
+                file_path = os.path.join(input_folder, file_name)
+                html_content = convert_pdf_to_html(file_path)
+                excerpt = extract_excerpt_from_pdf(file_path)
+                if len(file_name.split(".")) > 0:
+                    send_html_to_api(file_name.split(".")[0], excerpt, html_content)
+                    total_files_added += 1
+            except Exception as e:
+                print("Error:", e)
+            finally:
+                print("Transfer Complete: ", file_name)
+
+    return total_files_added, total_files_found
 
 
 def send_html_to_api(title, excerpt, html):
     conn = http.client.HTTPConnection("localhost", 3000)
     slug = slugify(title)
+
+    # Load existing processed slugs or create an empty list
+    processed_slugs = []
+    file_path = 'processed_slugs.json'
+    if os.path.exists(file_path):
+        with open(file_path, 'r') as file:
+            processed_slugs = json.load(file)
+
+    if slug in processed_slugs:
+        print(f"Entry with slug '{slug}' already processed. Skipping...")
+        return
+
     payload = json.dumps({
         "title": title,
         "slug": slug,
@@ -112,5 +142,17 @@ def send_html_to_api(title, excerpt, html):
     }
     conn.request("POST", "/api/papers", payload, headers)
     res = conn.getresponse()
-    data = res.read()
-    print(data.decode("utf-8"))
+    data = res.read().decode('utf-8')
+
+    # Extracting the slug from the response data
+    try:
+        response_json = json.loads(data)
+        data_info = response_json.get('data')
+        if data_info and 'slug' in data_info:
+            created_slug = data_info['slug']
+            # Add the processed slug to the list and save it back to the file
+            processed_slugs.append(created_slug)
+            with open(file_path, 'w') as file:
+                json.dump(processed_slugs, file)
+    except json.JSONDecodeError as e:
+        print(f"Error decoding JSON response: {e}")
