@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "docx2html"
+version = "0.1.0"
+description = ""
+authors = ["morgan4080 <morganmurungi@live.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+docx = "^0.2.4"
+bs4 = "^0.0.1"
+python-docx = "^1.1.0"
+python-slugify = "^8.0.1"
+lxml = "^4.9.3"
+pdfplumber = "^0.10.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
